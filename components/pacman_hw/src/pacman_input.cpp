@@ -1,10 +1,11 @@
 /*
  * pacman_input.cpp - Pac-Man Input Handling for FIESTA26
  *
- * Uses GPIO buttons and optionally IMU for tilt control
+ * Uses GPIO buttons and IMU for tilt control
  */
 
 #include "pacman_input.h"
+#include "qmi8658.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -16,12 +17,23 @@ static const char *TAG = "PACMAN_INPUT";
 #define PIN_BTN_BOOT    GPIO_NUM_9    // BOOT button
 #define PIN_BTN_PWR     GPIO_NUM_18   // PWR button
 
+// Tilt thresholds for dead zone / hysteresis
+// These define when tilt is recognized as a direction
+#define TILT_THRESHOLD_ON   25   // Threshold to activate direction
+#define TILT_THRESHOLD_OFF  15   // Threshold to deactivate (hysteresis)
+
 // Current input state
 static uint8_t current_buttons = 0;
 
 // Virtual coin/start state machine (single button triggers both)
 static uint32_t virtual_coin_timer = 0;
 static int virtual_coin_state = 0;
+
+// IMU tilt state with hysteresis
+static bool tilt_up_active = false;
+static bool tilt_down_active = false;
+static bool tilt_left_active = false;
+static bool tilt_right_active = false;
 
 void pacman_input_init(void)
 {
@@ -36,7 +48,16 @@ void pacman_input_init(void)
     io_conf.intr_type = GPIO_INTR_DISABLE;
     gpio_config(&io_conf);
 
-    ESP_LOGI(TAG, "Input initialized (BOOT=coin/start, PWR=fire/direction)");
+    // Initialize IMU
+    if (qmi8658_init()) {
+        // Auto-calibrate on startup (assumes device is roughly flat)
+        qmi8658_calibrate();
+        ESP_LOGI(TAG, "IMU tilt control enabled");
+    } else {
+        ESP_LOGW(TAG, "IMU not available, using buttons only");
+    }
+
+    ESP_LOGI(TAG, "Input initialized (BOOT=coin/start, Tilt=direction)");
 }
 
 void pacman_input_update(void)
@@ -48,24 +69,90 @@ void pacman_input_update(void)
     bool pwr_pressed = (gpio_get_level(PIN_BTN_PWR) == 0);
 
     // BOOT button: Coin + Start (with timing)
-    // This implements Galagino's virtual coin/start mechanism
     if (boot_pressed) {
         current_buttons |= BTN_COIN;
     }
 
-    // PWR button: For now, use as alternate directional
-    // In the future, could map to IMU tilt
+    // PWR button: Manual recalibrate when held
     if (pwr_pressed) {
-        // Could be used for pause or special function
+        // Could trigger recalibration or other function
+        // For now, unused
     }
 
-    // TODO: Add IMU tilt control for directions
-    // The FIESTA26 has a QMI8658 IMU that could provide
-    // tilt-based joystick input for a more immersive experience
+    // IMU tilt control with hysteresis
+    if (qmi8658_is_initialized()) {
+        int8_t pitch, roll;
+        qmi8658_get_tilt(&pitch, &roll);
+
+        // Debug: log tilt values periodically
+        static int debug_counter = 0;
+        if (++debug_counter >= 60) {  // Every ~1 second at 60fps
+            ESP_LOGI(TAG, "Tilt: pitch=%d roll=%d", pitch, roll);
+            debug_counter = 0;
+        }
+
+        // Swap pitch mapping: negative pitch = tilt toward you = UP
+        // (Originally had positive = UP but IMU orientation is opposite)
+        int8_t up_down = -pitch;
+
+        // Pitch controls UP/DOWN
+        // Apply hysteresis to prevent jitter at threshold
+        if (tilt_up_active) {
+            if (up_down < TILT_THRESHOLD_OFF) {
+                tilt_up_active = false;
+            }
+        } else {
+            if (up_down >= TILT_THRESHOLD_ON) {
+                tilt_up_active = true;
+                tilt_down_active = false;  // Can't be both
+            }
+        }
+
+        if (tilt_down_active) {
+            if (up_down > -TILT_THRESHOLD_OFF) {
+                tilt_down_active = false;
+            }
+        } else {
+            if (up_down <= -TILT_THRESHOLD_ON) {
+                tilt_down_active = true;
+                tilt_up_active = false;
+            }
+        }
+
+        // Roll controls LEFT/RIGHT (tilt left = LEFT)
+        if (tilt_left_active) {
+            if (roll > -TILT_THRESHOLD_OFF) {
+                tilt_left_active = false;
+            }
+        } else {
+            if (roll <= -TILT_THRESHOLD_ON) {
+                tilt_left_active = true;
+                tilt_right_active = false;
+            }
+        }
+
+        if (tilt_right_active) {
+            if (roll < TILT_THRESHOLD_OFF) {
+                tilt_right_active = false;
+            }
+        } else {
+            if (roll >= TILT_THRESHOLD_ON) {
+                tilt_right_active = true;
+                tilt_left_active = false;
+            }
+        }
+
+        // Apply tilt directions to buttons
+        if (tilt_up_active)    current_buttons |= BTN_UP;
+        if (tilt_down_active)  current_buttons |= BTN_DOWN;
+        if (tilt_left_active)  current_buttons |= BTN_LEFT;
+        if (tilt_right_active) current_buttons |= BTN_RIGHT;
+    }
 
     // Virtual coin/start state machine
     static uint32_t last_time = 0;
     uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    (void)last_time;  // Unused warning suppression
 
     switch (virtual_coin_state) {
         case 0:  // Idle

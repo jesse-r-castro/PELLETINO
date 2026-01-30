@@ -124,8 +124,6 @@ extern "C" {
 // Z80 memory read callback - IRAM for speed (called millions of times/frame)
 IRAM_ATTR uint8_t pacman_mem_read(uint16_t addr)
 {
-    addr &= 0x7FFF;  // A15 is unused in Pac-Man
-
     // 0x0000-0x3FFF: Program ROM (most common case - put first)
     if (addr < 0x4000) {
         return rom_data[addr];
@@ -136,15 +134,23 @@ IRAM_ATTR uint8_t pacman_mem_read(uint16_t addr)
         return memory[addr - 0x4000];
     }
 
-    // 0x5000-0x50FF: I/O reads (least common)
-    if (addr == 0x5000) {
-        return pacman_read_in0();
+    // 0x5000-0x50FF: I/O reads
+    if (addr < 0x5100) {
+        if (addr == 0x5000) {
+            return pacman_read_in0();
+        }
+        if (addr == 0x5040) {
+            return pacman_read_in1();
+        }
+        if (addr == 0x5080) {
+            return PACMAN_DIP_DEFAULT;
+        }
+        return 0xFF;
     }
-    if (addr == 0x5040) {
-        return pacman_read_in1();
-    }
-    if (addr == 0x5080) {
-        return PACMAN_DIP_DEFAULT;
+
+    // 0x8000-0x9FFF: Ms. Pac-Man auxiliary ROM (maps to rom_data 0x4000-0x5FFF)
+    if (addr >= 0x8000 && addr < 0xA000) {
+        return rom_data[addr - 0x4000];  // 0x8000 -> 0x4000, 0x9FFF -> 0x5FFF
     }
 
     return 0xFF;

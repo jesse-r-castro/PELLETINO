@@ -16,12 +16,36 @@
 #include "z80_cpu.h"
 #include "pacman_hw.h"
 
-// Include converted ROM data
+// Game selection - uncomment one:
+#define GAME_PACMAN
+// #define GAME_MSPACMAN
+
+// Include converted ROM data based on game selection
+#ifdef GAME_MSPACMAN
+#include "mspacman_rom.h"
+#include "mspacman_tilemap.h"
+#include "mspacman_spritemap.h"
+#include "mspacman_cmap.h"
+#include "mspacman_wavetable.h"
+#define GAME_NAME "Ms. Pac-Man"
+#define GAME_ROM mspacman_rom
+#define GAME_TILES mspacman_5e
+#define GAME_SPRITES mspacman_sprites
+#define GAME_COLORMAP mspacman_colormap
+#define GAME_WAVETABLE mspacman_wavetable
+#else
 #include "pacman_rom.h"
 #include "pacman_tilemap.h"
 #include "pacman_spritemap.h"
 #include "pacman_cmap.h"
 #include "pacman_wavetable.h"
+#define GAME_NAME "Pac-Man"
+#define GAME_ROM pacman_rom
+#define GAME_TILES pacman_5e
+#define GAME_SPRITES pacman_sprites
+#define GAME_COLORMAP pacman_colormap
+#define GAME_WAVETABLE pacman_wavetable
+#endif
 
 static const char *TAG = "PELLETINO";
 
@@ -33,7 +57,7 @@ static bool running = false;
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "PELLETINO starting...");
+    ESP_LOGI(TAG, "PELLETINO starting - %s", GAME_NAME);
     ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
 
     // Initialize display
@@ -54,11 +78,11 @@ extern "C" void app_main(void)
 
     // Load ROM and graphics data
     ESP_LOGI(TAG, "Loading ROM data...");
-    pacman_set_rom(pacman_rom);
-    pacman_set_tiles(pacman_5e);
-    pacman_set_sprites(&pacman_sprites[0][0][0]);
-    pacman_set_palette(&pacman_colormap[0][0]);
-    pacman_set_wavetable(&pacman_wavetable[0][0]);
+    pacman_set_rom(GAME_ROM);
+    pacman_set_tiles(GAME_TILES);
+    pacman_set_sprites(&GAME_SPRITES[0][0][0]);
+    pacman_set_palette(&GAME_COLORMAP[0][0]);
+    pacman_set_wavetable(&GAME_WAVETABLE[0][0]);
     pacman_load_roms();
 
     ESP_LOGI(TAG, "Free heap after init: %lu bytes", esp_get_free_heap_size());

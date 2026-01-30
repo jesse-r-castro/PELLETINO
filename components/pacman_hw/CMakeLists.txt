@@ -3,6 +3,7 @@ idf_component_register(
         "src/pacman_hw.cpp"
         "src/pacman_video.cpp"
         "src/pacman_input.cpp"
+        "src/qmi8658.cpp"
     INCLUDE_DIRS
         "include"
     REQUIRES
