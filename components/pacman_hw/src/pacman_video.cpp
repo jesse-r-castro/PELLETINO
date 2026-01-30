@@ -43,19 +43,24 @@ static void init_tileaddr_table(void)
     /*
      * Pac-Man's video RAM layout is non-linear (rotated screen)
      * This generates the same mapping as Galagino's tileaddr.py
+     * 
+     * Top/bottom rows (score areas) have columns reversed
+     * Main playfield columns decrease by 32 as you go right
      */
     for (int row = 0; row < TILES_Y; row++) {
         for (int col = 0; col < TILES_X; col++) {
             uint16_t addr;
 
             if (row < 2) {
-                // Top 2 rows (score area)
-                addr = 0x3DD + col - 32 * row;
+                // Top 2 rows (score area) - columns go backwards
+                // Row 0: 989, 988, 987... Row 1: 1021, 1020, 1019...
+                addr = 0x3DD - col + 32 * row;
             } else if (row >= 34) {
-                // Bottom 2 rows
-                addr = 0x01D + col - 32 * (row - 34);
+                // Bottom 2 rows - columns go backwards
+                // Row 34: 29, 28, 27... Row 35: 61, 60, 59...
+                addr = 0x01D - col + 32 * (row - 34);
             } else {
-                // Main playfield (rows 2-33)
+                // Main playfield (rows 2-33) - this was correct
                 addr = 0x3A0 + (row - 2) - 32 * col;
             }
 
@@ -261,9 +266,8 @@ void pacman_video_render_frame(const uint8_t *memory)
         // Write tile row using pre-swapped colors for faster DMA
         display_write_preswapped(frame_buffer, GAME_WIDTH * TILE_HEIGHT);
 
-        // Update audio every 3 rows (~12 updates per frame for 64-sample buffer)
-        // At 24kHz/60fps we need 400 samples/frame, so 12*64=768 samples (plenty)
-        if (row % 3 == 0) {
+        // Update audio 6 times per frame like Galagino (every ~6 rows)
+        if (row % 6 == 5) {
             audio_update();
         }
     }
