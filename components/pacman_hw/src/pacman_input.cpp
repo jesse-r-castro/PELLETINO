@@ -16,11 +16,15 @@ static const char *TAG = "PACMAN_INPUT";
 // FIESTA26 button pins
 #define PIN_BTN_BOOT    GPIO_NUM_9    // BOOT button
 #define PIN_BTN_PWR     GPIO_NUM_18   // PWR button
+#define PIN_BAT_EN      GPIO_NUM_15   // Battery enable (keep HIGH for power)
 
 // Tilt thresholds for dead zone / hysteresis
 // These define when tilt is recognized as a direction
 #define TILT_THRESHOLD_ON   25   // Threshold to activate direction
 #define TILT_THRESHOLD_OFF  15   // Threshold to deactivate (hysteresis)
+
+// Power button long press threshold (in update cycles at ~60fps)
+#define PWR_LONG_PRESS_FRAMES  60  // ~1 second
 
 // Current input state
 static uint8_t current_buttons = 0;
@@ -35,9 +39,23 @@ static bool tilt_down_active = false;
 static bool tilt_left_active = false;
 static bool tilt_right_active = false;
 
+// Power button state for long press detection
+static uint32_t pwr_press_counter = 0;
+
 void pacman_input_init(void)
 {
     ESP_LOGI(TAG, "Initializing input");
+
+    // Configure BAT_EN (GPIO15) as output HIGH to maintain battery power
+    gpio_config_t bat_conf = {};
+    bat_conf.pin_bit_mask = (1ULL << PIN_BAT_EN);
+    bat_conf.mode = GPIO_MODE_OUTPUT;
+    bat_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    bat_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    bat_conf.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&bat_conf);
+    gpio_set_level(PIN_BAT_EN, 1);  // Keep power on
+    ESP_LOGI(TAG, "BAT_EN (GPIO15) set HIGH - battery power maintained");
 
     // Configure button GPIOs
     gpio_config_t io_conf = {};
@@ -57,7 +75,7 @@ void pacman_input_init(void)
         ESP_LOGW(TAG, "IMU not available, using buttons only");
     }
 
-    ESP_LOGI(TAG, "Input initialized (BOOT=coin/start, Tilt=direction)");
+    ESP_LOGI(TAG, "Input initialized (BOOT=coin/start, PWR long-press=power off)");
 }
 
 void pacman_input_update(void)
@@ -73,10 +91,17 @@ void pacman_input_update(void)
         current_buttons |= BTN_COIN;
     }
 
-    // PWR button: Manual recalibrate when held
+    // PWR button: Long press to power off
     if (pwr_pressed) {
-        // Could trigger recalibration or other function
-        // For now, unused
+        pwr_press_counter++;
+        if (pwr_press_counter == PWR_LONG_PRESS_FRAMES) {
+            ESP_LOGI(TAG, "Power button long press - shutting down");
+            gpio_set_level(PIN_BAT_EN, 0);  // Cut power
+            // Device will power off if on battery
+            vTaskDelay(pdMS_TO_TICKS(1000));  // Wait in case USB powered
+        }
+    } else {
+        pwr_press_counter = 0;  // Reset counter when released
     }
 
     // IMU tilt control with hysteresis
@@ -119,24 +144,26 @@ void pacman_input_update(void)
             }
         }
 
-        // Roll controls LEFT/RIGHT (tilt left = LEFT)
+        // Roll controls LEFT/RIGHT (inverted)
+        int8_t left_right = -roll;
+        
         if (tilt_left_active) {
-            if (roll > -TILT_THRESHOLD_OFF) {
+            if (left_right > -TILT_THRESHOLD_OFF) {
                 tilt_left_active = false;
             }
         } else {
-            if (roll <= -TILT_THRESHOLD_ON) {
+            if (left_right <= -TILT_THRESHOLD_ON) {
                 tilt_left_active = true;
                 tilt_right_active = false;
             }
         }
 
         if (tilt_right_active) {
-            if (roll < TILT_THRESHOLD_OFF) {
+            if (left_right < TILT_THRESHOLD_OFF) {
                 tilt_right_active = false;
             }
         } else {
-            if (roll >= TILT_THRESHOLD_ON) {
+            if (left_right >= TILT_THRESHOLD_ON) {
                 tilt_right_active = true;
                 tilt_left_active = false;
             }

@@ -2,11 +2,13 @@
  * qmi8658.cpp - QMI8658 IMU Driver for PELLETINO
  *
  * Provides tilt-based control using the onboard 6-axis IMU
+ * Uses simple gravity vector detection - no calibration needed
  */
 
 #include "qmi8658.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
+#include <cmath>
 #include <algorithm>
 
 static const char *TAG = "QMI8658";
@@ -19,21 +21,23 @@ static const char *TAG = "QMI8658";
 #define REG_CTRL1           0x02
 #define REG_CTRL2           0x03
 #define REG_CTRL3           0x04
+#define REG_CTRL5           0x06
 #define REG_CTRL7           0x08
+#define REG_CTRL9           0x0A
+#define REG_STATUS0         0x2E
+#define REG_STATUS1         0x2F
 #define REG_ACCEL_X_L       0x35
-#define REG_GYRO_X_L        0x3B
 
 // Expected WHO_AM_I value
 #define WHO_AM_I_VALUE      0x05
 
 // Module state
 static bool imu_initialized = false;
-static int16_t offset_x = 0;
-static int16_t offset_y = 0;
 
-// Smoothing state
-static int32_t smooth_x = 0;
-static int32_t smooth_y = 0;
+// Simple moving average (last 4 samples)
+static int16_t hist_x[4] = {0};
+static int16_t hist_y[4] = {0};
+static int hist_idx = 0;
 
 static esp_err_t qmi8658_read_reg(uint8_t reg, uint8_t *value)
 {
@@ -80,26 +84,44 @@ bool qmi8658_init(void)
 
     ESP_LOGI(TAG, "QMI8658 detected (WHO_AM_I=0x%02X)", who_am_i);
 
-    // CTRL1: Enable sensors, sensor mode
-    qmi8658_write_reg(REG_CTRL1, 0x60);
+    // Reset sequence per QMI8658 datasheet
+    // CTRL1[7]: SerialInterface_disable=0, CTRL1[6]:address_ai=1 (auto-increment)
+    qmi8658_write_reg(REG_CTRL1, 0x40);
 
-    // CTRL2: Accelerometer configuration
-    //   Bits 6:4: Scale = 001 (±4g)
-    //   Bits 3:0: ODR = 0100 (235Hz)
-    qmi8658_write_reg(REG_CTRL2, 0x14);
+    // CTRL7: Disable all sensors first
+    qmi8658_write_reg(REG_CTRL7, 0x00);
+    vTaskDelay(pdMS_TO_TICKS(5));
 
-    // CTRL3: Gyroscope configuration (not used but configure anyway)
-    //   Bits 6:4: Scale = 011 (±512dps)
-    //   Bits 3:0: ODR = 0100 (235Hz)
-    qmi8658_write_reg(REG_CTRL3, 0x34);
+    // CTRL2: Accelerometer ODR and Scale
+    // Bits 7: self-test=0
+    // Bits 6:4: aFS = 000 (±2g)  
+    // Bits 3:0: aODR = 0101 (470Hz for more responsive updates)
+    qmi8658_write_reg(REG_CTRL2, 0x05);
 
-    // CTRL7: Enable sensors
-    //   Bit 0: aEN = 1 (accel enabled)
-    //   Bit 1: gEN = 1 (gyro enabled)
-    qmi8658_write_reg(REG_CTRL7, 0x03);
+    // CTRL3: Gyroscope (configure even if not used)
+    qmi8658_write_reg(REG_CTRL3, 0x25);
+
+    // CTRL5: LPF disabled for accel and gyro
+    qmi8658_write_reg(REG_CTRL5, 0x00);
+
+    // CTRL7: Enable accelerometer
+    // Bit 0: aEN = 1
+    qmi8658_write_reg(REG_CTRL7, 0x01);
+
+    vTaskDelay(pdMS_TO_TICKS(30));  // Wait for first sample
+
+    // Check status
+    uint8_t status = 0;
+    qmi8658_read_reg(REG_STATUS1, &status);
+    ESP_LOGI(TAG, "STATUS1=0x%02X after enable", status);
+
+    // Do a test read
+    int16_t tx, ty, tz;
+    qmi8658_read_accel(&tx, &ty, &tz);
+    ESP_LOGI(TAG, "Test read: x=%d y=%d z=%d", tx, ty, tz);
 
     imu_initialized = true;
-    ESP_LOGI(TAG, "QMI8658 initialized");
+    ESP_LOGI(TAG, "QMI8658 initialized (±2g scale, 470Hz)");
 
     return true;
 }
@@ -118,6 +140,11 @@ void qmi8658_read_accel(int16_t *x, int16_t *y, int16_t *z)
         return;
     }
 
+    // Check if new data is available (STATUS1 bit 0)
+    uint8_t status = 0;
+    qmi8658_read_reg(REG_STATUS1, &status);
+    
+    // Read regardless - the read itself should trigger new conversion
     uint8_t buf[6];
     if (qmi8658_read_regs(REG_ACCEL_X_L, buf, 6) != ESP_OK) {
         if (x) *x = 0;
@@ -126,7 +153,6 @@ void qmi8658_read_accel(int16_t *x, int16_t *y, int16_t *z)
         return;
     }
 
-    // Little-endian: low byte first
     if (x) *x = (int16_t)((buf[1] << 8) | buf[0]);
     if (y) *y = (int16_t)((buf[3] << 8) | buf[2]);
     if (z) *z = (int16_t)((buf[5] << 8) | buf[4]);
@@ -134,34 +160,8 @@ void qmi8658_read_accel(int16_t *x, int16_t *y, int16_t *z)
 
 void qmi8658_calibrate(void)
 {
-    if (!imu_initialized) {
-        return;
-    }
-
-    ESP_LOGI(TAG, "Calibrating IMU (hold device flat)...");
-
-    // Average multiple readings for calibration
-    int32_t sum_x = 0, sum_y = 0, sum_z = 0;
-    const int samples = 32;
-
-    for (int i = 0; i < samples; i++) {
-        int16_t ax, ay, az;
-        qmi8658_read_accel(&ax, &ay, &az);
-        sum_x += ax;
-        sum_y += ay;
-        sum_z += az;
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    offset_x = sum_x / samples;
-    offset_y = sum_y / samples;
-    // Don't calibrate Z (should be ~1g when flat)
-
-    // Initialize smoothing state
-    smooth_x = 0;
-    smooth_y = 0;
-
-    ESP_LOGI(TAG, "Calibration done: offset_x=%d, offset_y=%d", offset_x, offset_y);
+    // No calibration needed - we use relative tilt from gravity
+    ESP_LOGI(TAG, "IMU ready (no calibration needed)");
 }
 
 void qmi8658_get_tilt(int8_t *pitch, int8_t *roll)
@@ -179,22 +179,29 @@ void qmi8658_get_tilt(int8_t *pitch, int8_t *roll)
     int16_t ax, ay, az;
     qmi8658_read_accel(&ax, &ay, &az);
 
-    // Apply calibration offsets
-    int32_t cx = (int32_t)ax - offset_x;
-    int32_t cy = (int32_t)ay - offset_y;
+    // Debug: log raw accel values periodically
+    static int raw_debug = 0;
+    if (++raw_debug >= 120) {
+        ESP_LOGI(TAG, "Raw accel: x=%d y=%d z=%d", ax, ay, az);
+        raw_debug = 0;
+    }
 
-    // Apply stronger smoothing (IIR filter: 7/8 old + 1/8 new)
-    smooth_x = ((smooth_x * 7) + cx) / 8;
-    smooth_y = ((smooth_y * 7) + cy) / 8;
+    // Store in history buffer
+    hist_x[hist_idx] = ax;
+    hist_y[hist_idx] = ay;
+    hist_idx = (hist_idx + 1) & 3;
 
-    // Convert to normalized range (-128 to 127)
-    // At ±4g scale, 8192 counts = 1g
-    // For ~15° tilt to trigger: sin(15°) ≈ 0.26g ≈ 2100 counts
-    // Scale: divide by ~16 to get reasonable range
-    int32_t pitch_val = smooth_x / 16;
-    int32_t roll_val = smooth_y / 16;
+    // Simple average of last 4 samples
+    int32_t avg_x = (hist_x[0] + hist_x[1] + hist_x[2] + hist_x[3]) / 4;
+    int32_t avg_y = (hist_y[0] + hist_y[1] + hist_y[2] + hist_y[3]) / 4;
 
-    // Clamp to valid range
+    // At ±2g scale: 16384 counts = 1g
+    // For 15° tilt: sin(15°) ≈ 0.26 → ~4250 counts
+    // Scale to -128..127: divide by 64 gives ~±256 at 1g, ~±66 at 15°
+    // Use /128 for more range: ~±128 at 1g, ~±33 at 15°
+    int32_t pitch_val = avg_x / 128;
+    int32_t roll_val = avg_y / 128;
+
     *pitch = (int8_t)std::max(-128, std::min(127, (int)pitch_val));
     *roll = (int8_t)std::max(-128, std::min(127, (int)roll_val));
 }
