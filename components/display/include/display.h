@@ -35,7 +35,7 @@ extern "C" {
 
 // SPI configuration
 #define LCD_SPI_HOST    SPI2_HOST
-#define LCD_SPI_CLOCK   40000000  // 40 MHz
+#define LCD_SPI_CLOCK   80000000  // 80 MHz (max for ST7789)
 
 /**
  * Initialize the display driver

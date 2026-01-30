@@ -12,6 +12,7 @@
 #include "namco_wsg.h"
 #include "display.h"
 #include "esp_log.h"
+#include "esp_attr.h"
 #include <cstring>
 
 static const char *TAG = "PACMAN_HW";
@@ -120,83 +121,66 @@ void pacman_load_roms(void)
 // Z80 memory callbacks - extern "C" for linking with z80_cpu.c
 extern "C" {
 
-// Z80 memory read callback
-uint8_t pacman_mem_read(uint16_t addr)
+// Z80 memory read callback - IRAM for speed (called millions of times/frame)
+IRAM_ATTR uint8_t pacman_mem_read(uint16_t addr)
 {
     addr &= 0x7FFF;  // A15 is unused in Pac-Man
 
-    // 0x0000-0x3FFF: Program ROM
+    // 0x0000-0x3FFF: Program ROM (most common case - put first)
     if (addr < 0x4000) {
-        if (rom_data) {
-            return rom_data[addr];
-        }
-        return 0xFF;
+        return rom_data[addr];
     }
 
     // 0x4000-0x4FFF: Video RAM, Color RAM, Work RAM
-    if ((addr & 0xF000) == 0x4000) {
+    if (addr < 0x5000) {
         return memory[addr - 0x4000];
     }
 
-    // 0x5000-0x50FF: I/O reads
-    if ((addr & 0xF000) == 0x5000) {
-        // DIP switch at 0x5080
-        if (addr == 0x5080) {
-            return PACMAN_DIP_DEFAULT;
-        }
-
-        // IN0 at 0x5000 - joystick + coin
-        if (addr == 0x5000) {
-            return pacman_read_in0();
-        }
-
-        // IN1 at 0x5040 - start buttons
-        if (addr == 0x5040) {
-            return pacman_read_in1();
-        }
+    // 0x5000-0x50FF: I/O reads (least common)
+    if (addr == 0x5000) {
+        return pacman_read_in0();
+    }
+    if (addr == 0x5040) {
+        return pacman_read_in1();
+    }
+    if (addr == 0x5080) {
+        return PACMAN_DIP_DEFAULT;
     }
 
     return 0xFF;
 }
 
-// Z80 memory write callback
-void pacman_mem_write(uint16_t addr, uint8_t value)
+// Z80 memory write callback - IRAM for speed
+IRAM_ATTR void pacman_mem_write(uint16_t addr, uint8_t value)
 {
     addr &= 0x7FFF;  // A15 is unused
 
-    // 0x4000-0x4FFF: Video RAM, Color RAM, Work RAM
-    if ((addr & 0xF000) == 0x4000) {
-        // Detect game start: writing 'U' (0x55) to top-left corner
-        if (addr == (0x4000 + 985) && value == 0x55) {
-            game_started = 1;
-            ESP_LOGI(TAG, "Game started!");
-        }
-
+    // 0x4000-0x4FFF: Video RAM, Color RAM, Work RAM (most common)
+    if (addr >= 0x4000 && addr < 0x5000) {
         memory[addr - 0x4000] = value;
         return;
     }
 
     // 0x5000-0x50FF: I/O writes
-    if ((addr & 0xFF00) == 0x5000) {
-        // 0x5060-0x506F: Sprite RAM 2 (writes through to memory)
-        if ((addr & 0xFFF0) == 0x5060) {
+    if (addr >= 0x5000 && addr < 0x5100) {
+        // 0x5060-0x506F: Sprite RAM 2
+        if (addr >= 0x5060 && addr < 0x5070) {
             memory[addr - 0x4000] = value;
+            return;
         }
 
         // 0x5000: Interrupt enable
         if (addr == 0x5000) {
             irq_enable = value & 1;
+            return;
         }
 
         // 0x5040-0x505F: Sound registers
-        if ((addr & 0xFFE0) == 0x5040) {
+        if (addr >= 0x5040 && addr < 0x5060) {
             uint8_t reg = addr - 0x5040;
-            if (reg < 32 && sound_regs) {
-                sound_regs[reg] = value & 0x0F;
-            }
+            sound_regs[reg] = value & 0x0F;
+            return;
         }
-
-        return;
     }
 }
 

@@ -220,7 +220,7 @@ static void blit_sprite(int row, const Sprite &spr)
 }
 
 // Render one tile row (8 scanlines)
-static void render_tile_row(int row, const uint8_t *memory)
+static void IRAM_ATTR render_tile_row(int row, const uint8_t *memory)
 {
     // Clear row buffer to black
     memset(frame_buffer, 0, GAME_WIDTH * TILE_HEIGHT * sizeof(uint16_t));
