@@ -464,22 +464,23 @@ def convert_wavetable(rom_dir, out_dir):
     print(f"  {ROM_FILES['sound_prom'][1]}: {len(prom2)} bytes")
     
     # Combine both PROMs into wavetable
-    # Each waveform is 32 4-bit samples, stored as signed bytes
+    # Each PROM has 8 waveforms × 32 samples = 256 bytes
+    # Values are 0-15, convert to signed -7 to +8 (like Galagino: value - 7)
     wavetable = []
     
-    for wave_idx in range(16):
+    # First PROM: waves 0-7
+    for wave_idx in range(8):
         for sample_idx in range(32):
-            prom_addr = wave_idx * 32 + sample_idx
-            
-            if prom_addr < 256:
-                # First 256 bytes from prom1
-                nibble = prom1[prom_addr] & 0x0F if prom_addr < len(prom1) else 0
-            else:
-                # Next 256 bytes from prom2
-                nibble = prom2[prom_addr - 256] & 0x0F if (prom_addr - 256) < len(prom2) else 0
-            
-            # Convert 4-bit unsigned (0-15) to signed (-8 to +7)
-            signed_val = nibble - 8
+            byte_val = prom1[wave_idx * 32 + sample_idx] if (wave_idx * 32 + sample_idx) < len(prom1) else 0
+            # Galagino uses value - 7 (not value - 8)
+            signed_val = (byte_val & 0x0F) - 7
+            wavetable.append(signed_val)
+    
+    # Second PROM: waves 8-15
+    for wave_idx in range(8):
+        for sample_idx in range(32):
+            byte_val = prom2[wave_idx * 32 + sample_idx] if (wave_idx * 32 + sample_idx) < len(prom2) else 0
+            signed_val = (byte_val & 0x0F) - 7
             wavetable.append(signed_val)
     
     prefix = 'mspacman' if GAME_NAME == 'mspacman' else 'pacman'

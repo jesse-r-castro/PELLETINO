@@ -17,8 +17,8 @@ static const char *TAG = "AUDIO";
 // Sound registers (written by Z80, read by audio)
 static uint8_t sound_regs[32] = {0};
 
-// Audio sample buffer
-static int16_t sample_buffer[AUDIO_BUFFER_SIZE];
+// Audio sample buffer (unsigned 16-bit for ES8311)
+static uint16_t sample_buffer[AUDIO_BUFFER_SIZE];
 
 // I2S handle
 static i2s_chan_handle_t i2s_tx_handle = nullptr;

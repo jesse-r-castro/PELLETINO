@@ -88,7 +88,7 @@ void wsg_parse_registers(const uint8_t *regs)
     }
 }
 
-void wsg_render(int16_t *buffer, uint32_t samples)
+void wsg_render(uint16_t *buffer, uint32_t samples)
 {
     for (uint32_t i = 0; i < samples; i++) {
         int32_t v = 0;
@@ -105,17 +105,16 @@ void wsg_render(int16_t *buffer, uint32_t samples)
             v += snd_volume[2] * snd_wave[2][(snd_cnt[2] >> 13) & 0x1F];
         }
 
-        // v is now in range of roughly +/- 512 (3 channels * 15 vol * ~11 wave amplitude)
-        // Scale to 16-bit signed PCM
-        // Galagino does v*64 to get +/- 15-bit, then adds 0x8000 for unsigned
-        // We're outputting signed, so just scale
-        v = v * 64;
+        // v is now in range of roughly +/- 512 (3 channels * 15 vol * ~8 wave amplitude)
+        // Scale to 16-bit - use 48 instead of 64 to reduce distortion
+        v = v * 48;
 
-        // Clamp to 16-bit range
+        // Clamp to signed 16-bit range then convert to unsigned
         if (v > 32767) v = 32767;
         if (v < -32768) v = -32768;
 
-        buffer[i] = (int16_t)v;
+        // Convert to unsigned 16-bit (0x8000 = center/silence)
+        buffer[i] = (uint16_t)(0x8000 + v);
 
         // Advance phase counters
         snd_cnt[0] += snd_freq[0];

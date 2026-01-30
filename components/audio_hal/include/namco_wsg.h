@@ -49,10 +49,10 @@ void wsg_parse_registers(const uint8_t *regs);
 
 /**
  * Render audio samples
- * @param buffer Output buffer (16-bit signed PCM)
+ * @param buffer Output buffer (16-bit unsigned PCM, 0x8000 = center)
  * @param samples Number of samples to render
  */
-void wsg_render(int16_t *buffer, uint32_t samples);
+void wsg_render(uint16_t *buffer, uint32_t samples);
 
 #ifdef __cplusplus
 }

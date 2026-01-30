@@ -261,8 +261,9 @@ void pacman_video_render_frame(const uint8_t *memory)
         // Write tile row using pre-swapped colors for faster DMA
         display_write_preswapped(frame_buffer, GAME_WIDTH * TILE_HEIGHT);
 
-        // Update audio every 5 rows (7 updates per frame for smooth playback)
-        if (row % 5 == 0) {
+        // Update audio every 3 rows (~12 updates per frame for 64-sample buffer)
+        // At 24kHz/60fps we need 400 samples/frame, so 12*64=768 samples (plenty)
+        if (row % 3 == 0) {
             audio_update();
         }
     }
