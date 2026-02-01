@@ -87,3 +87,4 @@ tools/output/
 # Add your local paths/configs here, not in the repo
 local_config.h
 user_settings.h
+history.txt
