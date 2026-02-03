@@ -14,7 +14,7 @@ extern "C" {
 #endif
 
 // Audio configuration
-#define AUDIO_SAMPLE_RATE   24000   // 24 kHz (matches Galagino)
+#define AUDIO_SAMPLE_RATE   44100   // 44.1 kHz (CD quality)
 #define AUDIO_BUFFER_SIZE   64      // Samples per buffer (smaller = lower latency)
 #define AUDIO_DMA_BUFFERS   8       // Number of DMA buffers (more = less underruns)
 

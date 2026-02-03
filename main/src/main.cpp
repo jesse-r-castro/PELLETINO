@@ -15,6 +15,10 @@
 #include "audio_hal.h"
 #include "z80_cpu.h"
 #include "pacman_hw.h"
+#include "game_state.h"
+
+// Forward declare video player
+extern "C" int play_fiesta_video(void);
 
 // Game selection - uncomment one:
 #define GAME_PACMAN
@@ -64,6 +68,11 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "Initializing display...");
     display_init();
 
+    // Play intro video at boot
+    ESP_LOGI(TAG, "Playing FIESTA intro video...");
+    play_fiesta_video();
+    ESP_LOGI(TAG, "Video playback complete");
+
     // Initialize audio (ES8311 + I2S)
     ESP_LOGI(TAG, "Initializing audio...");
     audio_init();
@@ -86,11 +95,11 @@ extern "C" void app_main(void)
     pacman_load_roms();
 
     ESP_LOGI(TAG, "Free heap after init: %lu bytes", esp_get_free_heap_size());
-    ESP_LOGI(TAG, "Starting emulation loop...");
 
     running = true;
     uint64_t frame_start;
     uint64_t frame_count = 0;
+    bool game_over_video_played = false;
 
     while (running) {
         frame_start = esp_timer_get_time();
@@ -109,6 +118,14 @@ extern "C" void app_main(void)
 
         // 5. Trigger VBLANK interrupt if enabled
         pacman_vblank_interrupt();
+
+        // 6. Check for game over and play video
+        if (check_game_over(pacman_get_memory())) {
+            ESP_LOGI(TAG, "Game Over! Playing FIESTA video...");
+            vTaskDelay(pdMS_TO_TICKS(1000));  // 1 second delay
+            play_fiesta_video();
+            ESP_LOGI(TAG, "Video complete");
+        }
 
         // Frame timing - wait for 16.667ms total
         uint64_t elapsed = esp_timer_get_time() - frame_start;

@@ -68,6 +68,12 @@ Z80.h
 *.log
 build_log.txt
 
+# Movie/Video files and intermediate artifacts
+movie/*.mp4
+movie/*.mjpeg
+movie/*.png
+movie/fiesta_data.h
+
 # Temporary files
 *.tmp
 temp/

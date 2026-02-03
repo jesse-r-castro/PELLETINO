@@ -1,12 +1,17 @@
 idf_component_register(
     SRCS 
         "src/main.cpp"
+        "src/fiesta_video.c"
+        "src/game_state.c"
     INCLUDE_DIRS 
         "include"
         "roms"
+        "../movie"
+        "${IDF_PATH}/components/esp_rom/include/esp32c6/rom"
     REQUIRES
         driver
         esp_timer
+        esp_rom
         audio_hal
         display
         z80_cpu

@@ -2,6 +2,10 @@
 
 Quick reference for AI agents working on this project.
 
+## TODO
+
+- [x] Upgrade audio sample rate to 44.1kHz (completed 2026-02-03)
+
 ## ESP-IDF Environment Setup
 
 **ESP-IDF Version:** 5.3+  
@@ -45,6 +49,75 @@ idf.py menuconfig
 # Size analysis
 idf.py size-components
 ```
+
+### Alternative Build & Flash (if idf.py not in PATH)
+
+```bash
+# Source ESP-IDF environment first
+source ~/esp/v5.3.4/esp-idf/export.sh
+
+# Then run commands from PELLETINO directory
+cd ~/Projects/msp/PELLETINO
+idf.py -p /dev/cu.usbmodem5101 flash
+
+# Or using esptool directly (from build directory)
+cd ~/Projects/msp/PELLETINO/build
+python3 -m esptool --chip esp32c6 --port /dev/cu.usbmodem5101 --baud 460800 \
+  --before default_reset --after hard_reset write_flash \
+  --flash_mode dio --flash_freq 80m --flash_size 4MB \
+  0x0 bootloader/bootloader.bin \
+  0x10000 pelletino.bin \
+  0x8000 partition_table/partition-table.bin
+```
+
+**Flash Timing:** At 460800 baud, flashing ~866KB should take 15-20 seconds. If it takes >3 minutes, the connection may have hung - try resetting the board or checking the USB connection.
+
+## Video Feature
+
+The project includes an MJPEG video player that displays on the ST7789 screen at full 240×280 resolution.
+
+### Generating Video Files
+
+**IMPORTANT:** Always use `make_fiesta.sh` to generate the video header file. This script:
+- Scales video to exactly 240×280 (full screen, cropped to fill)
+- Encodes at 24 FPS for smooth playback
+- Compresses to target file size using quality tuning (iterates q:v from 10-31)
+- Outputs directly to `fiesta_data.h` format with correct C types
+
+```bash
+cd movie
+./make_fiesta.sh Pac_Man_Fiesta_Float_Animation.mp4 3000 fiesta_data.h
+```
+
+Parameters:
+- Arg 1: Input video file (any ffmpeg-supported format)
+- Arg 2: Target size in KB (use 3000 for ~3MB, max for partition)
+- Arg 3: Output header file name
+
+**Do NOT use `convert_video.py` directly** - it doesn't handle resolution/FPS/cropping properly.
+
+### Video Playback Behavior
+
+- **At Boot:** Video plays immediately after display initialization, before game starts
+- **At Game Over:** Video plays after lives reach 0 (5-second delay for game over sequence)
+- **During Demo:** Video will trigger after demo game over
+- Video is decoded using TinyJPEG (tjpgd) at 24 FPS
+- 240×280 full screen with proper aspect ratio (cropped, not padded)
+- ~2.3 MB video file, ~143 frames (6 seconds at 24 FPS)
+
+### Implementation Files
+
+- Video decoder: `main/src/fiesta_video.c`
+- Game over detection: `main/src/game_state.c` (monitors RAM address 0x4E14 for lives)
+- Video data: `movie/fiesta_data.h` (generated, 2.2-2.3 MB)
+- Generation script: `movie/make_fiesta.sh`
+
+### Troubleshooting
+
+- **Black screen:** Check serial monitor - video might be playing but not visible
+- **Static/corruption:** Regenerate video with `make_fiesta.sh` using correct resolution
+- **Early game over:** Game state detection waits 5 seconds (300 frames) before monitoring
+- **Binary too large:** Reduce target size (arg 2) or video duration in script
 
 ## ROM Conversion
 

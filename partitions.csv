@@ -1,6 +1,8 @@
 # Name,   Type, SubType, Offset,   Size,    Flags
+# Custom partition table for PELLETINO with MJPEG video support
+# Total Flash: 4MB | App: 3.5MB | NVS: 24KB | PHY: 4KB | ROMs: 128KB | Storage: 64KB
 nvs,      data, nvs,     0x9000,   0x6000,
 phy_init, data, phy,     0xf000,   0x1000,
-factory,  app,  factory, 0x10000,  0x200000,
-roms,     data, 0x40,    0x210000, 0x20000,
-storage,  data, spiffs,  0x230000, 0x10000,
+factory,  app,  factory, 0x10000,  0x370000,
+roms,     data, 0x40,    0x380000, 0x20000,
+storage,  data, spiffs,  0x3A0000, 0x10000,

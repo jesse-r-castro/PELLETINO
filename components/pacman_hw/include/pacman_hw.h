@@ -92,6 +92,12 @@ void pacman_set_wavetable(const int8_t *wavetable);
  */
 void pacman_load_roms(void);
 
+/**
+ * Get pointer to Pac-Man memory (for game state inspection)
+ * @return Pointer to internal memory array (VRAM/CRAM/RAM)
+ */
+const uint8_t* pacman_get_memory(void);
+
 #ifdef __cplusplus
 }
 #endif
