@@ -18,7 +18,7 @@ static uint8_t *dma_buffer[2] = {nullptr, nullptr};  // Double buffer
 static int current_buffer = 0;
 static spi_transaction_t trans[2];  // Transaction descriptors
 static bool trans_pending = false;
-static constexpr size_t DMA_BUFFER_SIZE = GAME_WIDTH * 8 * 2;  // One tile row
+static constexpr size_t DMA_BUFFER_SIZE = GAME_WIDTH * 16 * 2;  // 16 rows for video (was 8)
 
 // ST7789 Commands
 #define ST7789_NOP       0x00

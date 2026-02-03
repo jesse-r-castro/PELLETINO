@@ -39,8 +39,9 @@ static const char *TAG = "FIESTA_VIDEO";
 #define TJPGD_WORKSPACE_SIZE  4096
 static uint8_t tjpgd_work[TJPGD_WORKSPACE_SIZE];
 
-// Line buffer for RGB565 conversion
-static uint16_t mcu_line_buffer[DISPLAY_WIDTH];
+// MCU block buffer for batch conversion (16x16 worst case = 256 pixels)
+#define MCU_BLOCK_BUFFER_SIZE  (16 * 16)
+static uint16_t mcu_block_buffer[MCU_BLOCK_BUFFER_SIZE];
 
 // Context for JPEG decoder callbacks
 typedef struct {
@@ -75,8 +76,9 @@ static unsigned int tjpgd_input_func(JDEC *jd, uint8_t *buff, unsigned int nbyte
 }
 
 /**
- * TinyJPEG output function - converts RGB888 to RGB565 and writes scanlines
+ * TinyJPEG output function - converts RGB888 to RGB565 and writes MCU blocks
  * TinyJPEG outputs RGB888 (JD_FORMAT=0), we convert to RGB565
+ * Optimized: Process entire MCU block at once instead of scanline-by-scanline
  */
 static unsigned int tjpgd_output_func(JDEC *jd, void *bitmap, JRECT *rect)
 {
@@ -98,23 +100,23 @@ static unsigned int tjpgd_output_func(JDEC *jd, void *bitmap, JRECT *rect)
     // Set display window for this MCU block
     display_set_window(x, y, w, h);
     
-    // Convert RGB888 to RGB565 and write scanline by scanline
-    for (uint16_t row = 0; row < h; row++) {
-        uint8_t *src_row = &src[row * w * 3];
+    // Convert entire MCU block at once (optimized loop)
+    uint16_t total_pixels = w * h;
+    uint16_t *dst = mcu_block_buffer;
+    
+    for (uint16_t i = 0; i < total_pixels; i++) {
+        uint8_t r = src[i * 3];
+        uint8_t g = src[i * 3 + 1];
+        uint8_t b = src[i * 3 + 2];
         
-        for (uint16_t col = 0; col < w; col++) {
-            uint8_t r = src_row[col * 3];
-            uint8_t g = src_row[col * 3 + 1];
-            uint8_t b = src_row[col * 3 + 2];
-            
-            // Pack RGB565 and byte-swap (big-endian for ST7789)
-            uint16_t rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
-            mcu_line_buffer[col] = (rgb565 >> 8) | (rgb565 << 8);
-        }
-        
-        // Write this scanline
-        display_write_preswapped(mcu_line_buffer, w);
+        // Pack RGB565 and byte-swap in one operation
+        // Optimized: combine shift operations
+        uint16_t rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+        *dst++ = (rgb565 >> 8) | (rgb565 << 8);
     }
+    
+    // Write entire block at once
+    display_write_preswapped(mcu_block_buffer, total_pixels);
     
     return 1;
 }
