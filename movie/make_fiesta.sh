@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Defaults
-INPUT_FILE="${1:-fiesta.mp4}"
-TARGET_SIZE_KB="${2:-800}"   # Default limit 800KB
+INPUT_FILE="${1:-Pac_Man_Fiesta_Float_Animation.mp4}"
+TARGET_SIZE_KB="${2:-3000}"   # 3MB limit (app partition 3.5MB - current app 3.2MB = 300KB headroom)
 OUTPUT_HEADER="${3:-fiesta_data.h}"
 TEMP_MJPEG="temp_fiesta.mjpeg"
 
 # Configuration Constraints
-MAX_DURATION=4.5    # Max seconds to keep
+MAX_DURATION=8.0    # FULL VIDEO! (was 4.5s, now complete 8s)
 FPS=24              # Frames per second (smoother playback)
 WIDTH=240
 HEIGHT=280

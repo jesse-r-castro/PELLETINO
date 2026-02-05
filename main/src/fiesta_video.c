@@ -268,6 +268,9 @@ void play_fiesta_video(void) {
   ESP_LOGI(TAG, "Video complete: %d frames (%d skipped) in %lld ms (%.1f fps)",
            frame_count, frames_skipped, total_time, actual_fps);
 
+  // Display black frame to clear any leftover video pixels
+  display_fill(0x0000);
+
   heap_caps_free(frame_buffer);
   frame_buffer = NULL;
 }

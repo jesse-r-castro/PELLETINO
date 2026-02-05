@@ -59,6 +59,12 @@ void audio_set_volume(uint8_t volume);
  */
 uint8_t *audio_get_sound_registers(void);
 
+/**
+ * Control ES8311 power state for battery savings
+ * @param enabled true to power on codec, false to put in low-power mode
+ */
+void audio_set_power_state(bool enabled);
+
 #ifdef __cplusplus
 }
 #endif
