@@ -65,6 +65,18 @@ uint8_t *audio_get_sound_registers(void);
  */
 void audio_set_power_state(bool enabled);
 
+/**
+ * Set mute state
+ * @param muted true to mute audio, false to unmute
+ */
+void audio_set_mute(bool muted);
+
+/**
+ * Get current mute state
+ * @return true if muted, false if not
+ */
+bool audio_get_mute(void);
+
 #ifdef __cplusplus
 }
 #endif
