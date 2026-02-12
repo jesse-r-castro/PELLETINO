@@ -46,6 +46,12 @@ void qmi8658_calibrate(void);
  */
 void qmi8658_get_tilt(int8_t *pitch, int8_t *roll);
 
+/**
+ * Enable wake-on-motion interrupt for deep sleep
+ * Configures IMU to generate interrupt on motion detection
+ */
+void qmi8658_enable_wake_on_motion(void);
+
 #ifdef __cplusplus
 }
 #endif

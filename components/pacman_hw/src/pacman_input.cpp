@@ -6,6 +6,7 @@
 
 #include "pacman_input.h"
 #include "qmi8658.h"
+#include "audio_hal.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -25,6 +26,7 @@ static const char *TAG = "PACMAN_INPUT";
 
 // Power button long press threshold (in update cycles at ~60fps)
 #define PWR_LONG_PRESS_FRAMES  60  // ~1 second
+#define BOOT_LONG_PRESS_FRAMES 90  // ~1.5 seconds for mute toggle
 
 // Current input state
 static uint8_t current_buttons = 0;
@@ -32,6 +34,10 @@ static uint8_t current_buttons = 0;
 // Virtual coin/start state machine (single button triggers both)
 static uint32_t virtual_coin_timer = 0;
 static int virtual_coin_state = 0;
+
+// BOOT button long press for mute toggle
+static uint32_t boot_press_counter = 0;
+static bool boot_long_press_triggered = false;
 
 // IMU tilt state with hysteresis
 static bool tilt_up_active = false;
@@ -86,9 +92,42 @@ void pacman_input_update(void)
     bool boot_pressed = (gpio_get_level(PIN_BTN_BOOT) == 0);
     bool pwr_pressed = (gpio_get_level(PIN_BTN_PWR) == 0);
 
-    // BOOT button: Coin + Start (with timing)
+    // BOOT button: Coin + Start (with timing), or long press for mute toggle
     if (boot_pressed) {
-        current_buttons |= BTN_COIN;
+        boot_press_counter++;
+        
+        // Debug: Log counter progress
+        if (boot_press_counter % 30 == 0) { // Every 0.5 seconds
+            ESP_LOGI(TAG, "BOOT button held: %lu frames", boot_press_counter);
+        }
+        
+        // Check for long press (mute toggle)
+        if (boot_press_counter == BOOT_LONG_PRESS_FRAMES && !boot_long_press_triggered) {
+            boot_long_press_triggered = true;
+            bool new_mute = !audio_get_mute();
+            audio_set_mute(new_mute);
+            ESP_LOGI(TAG, "Mute toggled: %s", new_mute ? "ON" : "OFF");
+            
+            // Try to play a short beep to confirm (if unmuting)
+            if (!new_mute) {
+                // Play a brief tone on channel 0 as confirmation
+                uint8_t *regs = audio_get_sound_registers();
+                // Set a 440Hz tone for 100ms
+                regs[0x15] = 0x0F;  // Max volume
+                regs[0x10] = 0x80;  // Frequency low
+                regs[0x11] = 0x40;  // Frequency mid
+                regs[0x14] = 0x01;  // Waveform select
+            }
+        } else if (boot_press_counter < BOOT_LONG_PRESS_FRAMES) {
+            // Normal short press - coin button
+            current_buttons |= BTN_COIN;
+        }
+    } else {
+        if (boot_press_counter > 0) {
+            ESP_LOGI(TAG, "BOOT button released at %lu frames (needed %d)", boot_press_counter, BOOT_LONG_PRESS_FRAMES);
+        }
+        boot_press_counter = 0;
+        boot_long_press_triggered = false;
     }
 
     // PWR button: Long press to power off

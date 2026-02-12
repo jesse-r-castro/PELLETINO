@@ -20,6 +20,9 @@ static uint8_t sound_regs[32] = {0};
 // Audio sample buffer (unsigned 16-bit for ES8311)
 static uint16_t sample_buffer[AUDIO_BUFFER_SIZE];
 
+// Mute state
+static bool audio_muted = false;
+
 // I2S handle
 static i2s_chan_handle_t i2s_tx_handle = nullptr;
 
@@ -162,6 +165,13 @@ void audio_init(void)
 
 void audio_update(void)
 {
+    if (audio_muted) {
+        // Output silence when muted
+        memset(sample_buffer, 0, sizeof(sample_buffer));
+        audio_transmit();
+        return;
+    }
+    
     // Parse current sound register state
     wsg_parse_registers(sound_regs);
 
@@ -191,6 +201,24 @@ void audio_set_volume(uint8_t volume)
 uint8_t* audio_get_sound_registers(void)
 {
     return sound_regs;
+}
+
+void audio_set_mute(bool muted)
+{
+    audio_muted = muted;
+    
+    // Power off amplifier when muting to save battery
+    if (muted) {
+        audio_set_power_state(false);
+    }
+    // Note: When unmuting, let the main loop handle amplifier power based on audio activity
+    
+    ESP_LOGI(TAG, "Audio mute: %s", muted ? "ON" : "OFF");
+}
+
+bool audio_get_mute(void)
+{
+    return audio_muted;
 }
 
 void audio_set_power_state(bool enabled)

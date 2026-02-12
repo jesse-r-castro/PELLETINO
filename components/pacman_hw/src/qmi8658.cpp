@@ -23,6 +23,7 @@ static const char *TAG = "QMI8658";
 #define REG_CTRL3           0x04
 #define REG_CTRL5           0x06
 #define REG_CTRL7           0x08
+#define REG_CTRL8           0x09
 #define REG_CTRL9           0x0A
 #define REG_STATUS0         0x2E
 #define REG_STATUS1         0x2F
@@ -204,4 +205,23 @@ void qmi8658_get_tilt(int8_t *pitch, int8_t *roll)
 
     *pitch = (int8_t)std::max(-128, std::min(127, (int)pitch_val));
     *roll = (int8_t)std::max(-128, std::min(127, (int)roll_val));
+}
+
+void qmi8658_enable_wake_on_motion(void)
+{
+    if (!imu_initialized) {
+        ESP_LOGW(TAG, "IMU not initialized, cannot enable wake-on-motion");
+        return;
+    }
+
+    // Configure motion detection on QMI8658
+    // CTRL8: Motion detection interrupt settings
+    // Bit 7: Motion interrupt on INT1
+    // Bits 6-0: Motion detection threshold (default works for most cases)
+    qmi8658_write_reg(REG_CTRL8, 0x80);  // Enable motion interrupt on INT1
+
+    // Note: On FIESTA26 hardware, QMI8658 INT pin is not connected to ESP32 GPIO
+    // Wake-on-motion will be implemented via timer-based polling in deep sleep
+    
+    ESP_LOGI(TAG, "Motion detection configured (timer-based polling for wake)");
 }

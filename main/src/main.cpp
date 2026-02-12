@@ -6,15 +6,21 @@
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_pm.h"
+#include "esp_sleep.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 #include "audio_hal.h"
 #include "display.h"
 #include "game_state.h"
 #include "pacman_hw.h"
+#include "pacman_input.h"
+#include "qmi8658.h"
 #include "z80_cpu.h"
 
 // Forward declare video player
@@ -105,6 +111,9 @@ extern "C" void app_main(void) {
   const uint32_t IDLE_DIM_THRESHOLD = 1800; // 30 seconds @ 60fps
   uint8_t current_brightness = DISPLAY_BRIGHTNESS_ACTIVE;
 
+  // Battery optimization: CPU frequency scaling
+  bool cpu_low_power = false;
+
   while (running) {
     frame_start = esp_timer_get_time();
 
@@ -121,6 +130,9 @@ extern "C" void app_main(void) {
     pacman_poll_input();
 
     // 5. Battery optimization: Detect audio silence and power down amplifier
+    // Also respect mute state - keep amplifier off when muted
+    extern bool audio_get_mute(void);
+    bool is_muted = audio_get_mute();
     bool is_silent = true;
     uint8_t* sound_regs = audio_get_sound_registers();
     for (int ch = 0; ch < 3; ch++) {
@@ -130,7 +142,14 @@ extern "C" void app_main(void) {
       }
     }
 
-    if (is_silent) {
+    // When muted, always keep amplifier off
+    if (is_muted) {
+      if (audio_powered) {
+        audio_set_power_state(false);
+        audio_powered = false;
+      }
+      silence_frames = 0; // Reset counter
+    } else if (is_silent) {
       silence_frames++;
       if (silence_frames == SILENCE_THRESHOLD && audio_powered) {
         audio_set_power_state(false);
@@ -144,25 +163,51 @@ extern "C" void app_main(void) {
       silence_frames = 0;
     }
 
-    // 6. Battery optimization: Adaptive backlight dimming
-    // Note: Simple idle detection - could be enhanced with coin/game state check
+    // 6. Battery optimization: CPU frequency scaling
+    // Check game state to determine if actively playing
+    const uint8_t* memory = pacman_get_memory();
+    bool is_playing = (memory && memory[0x4E77] != 0); // Lives count - nonzero means active game
+    
+    if (is_playing && cpu_low_power) {
+      // Switch to high performance for gameplay
+      esp_pm_config_t pm_config = {
+        .max_freq_mhz = 160,
+        .min_freq_mhz = 160,
+        .light_sleep_enable = false
+      };
+      esp_pm_configure(&pm_config);
+      cpu_low_power = false;
+      ESP_LOGI(TAG, "CPU frequency: 160MHz (active gameplay)");
+    } else if (!is_playing && !cpu_low_power) {
+      // Switch to low power for attract mode
+      esp_pm_config_t pm_config = {
+        .max_freq_mhz = 80,
+        .min_freq_mhz = 80,
+        .light_sleep_enable = false
+      };
+      esp_pm_configure(&pm_config);
+      cpu_low_power = true;
+      ESP_LOGI(TAG, "CPU frequency: 80MHz (attract mode)");
+    }
+
+    // 7. Battery optimization: Adaptive backlight dimming
     idle_frames++;
     if (idle_frames >= IDLE_DIM_THRESHOLD) {
       if (current_brightness != DISPLAY_BRIGHTNESS_IDLE) {
         display_set_backlight(DISPLAY_BRIGHTNESS_IDLE);
         current_brightness = DISPLAY_BRIGHTNESS_IDLE;
-        ESP_LOGI(TAG, "Backlight dimmed to 30%% (idle)");
+        ESP_LOGI(TAG, "Backlight dimmed to 25%% (idle)");
       }
     } else if (current_brightness != DISPLAY_BRIGHTNESS_ACTIVE) {
       display_set_backlight(DISPLAY_BRIGHTNESS_ACTIVE);
       current_brightness = DISPLAY_BRIGHTNESS_ACTIVE;
-      ESP_LOGI(TAG, "Backlight restored to 60%% (active)");
+      ESP_LOGI(TAG, "Backlight restored to 50%% (active)");
     }
 
-    // 7. Trigger VBLANK interrupt if enabled
+    // 8. Trigger VBLANK interrupt if enabled
     pacman_vblank_interrupt();
 
-    // 8. Check for attract mode start (after arcade boot or after game over) and play video
+    // 9. Check for attract mode start (after arcade boot or after game over) and play video
     if (check_attract_mode_start(pacman_get_memory())) {
       ESP_LOGI(TAG, "Attract mode starting - playing FIESTA video...");
       play_fiesta_video();
