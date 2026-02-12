@@ -3,7 +3,7 @@ build/
 sdkconfig
 sdkconfig.old
 dependencies.lock
-
+main/roms/
 # IDE and editors
 .vscode/
 .idea/

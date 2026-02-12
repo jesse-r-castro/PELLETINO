@@ -98,6 +98,12 @@ void pacman_load_roms(void);
  */
 const uint8_t* pacman_get_memory(void);
 
+/**
+ * Get writable pointer to Pac-Man memory (for credit reset, etc.)
+ * @return Writable pointer to internal memory array
+ */
+uint8_t* pacman_get_memory_rw(void);
+
 #ifdef __cplusplus
 }
 #endif

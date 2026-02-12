@@ -232,3 +232,8 @@ const uint8_t* pacman_get_memory(void)
 {
     return memory;
 }
+
+uint8_t* pacman_get_memory_rw(void)
+{
+    return memory;
+}

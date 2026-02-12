@@ -70,3 +70,10 @@ uint8_t get_lives_count(const uint8_t *memory)
 {
     return memory[ADDR_LIVES];
 }
+
+void clear_credits(uint8_t *memory)
+{
+    memory[PACMAN_ADDR_CREDITS - 0x4000] = 0;  // Clear credit count
+    memory[PACMAN_ADDR_COINS - 0x4000] = 0;    // Clear partial coin count
+    ESP_LOGI(TAG, "Credits and coins cleared");
+}

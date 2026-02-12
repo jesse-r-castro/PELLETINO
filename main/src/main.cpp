@@ -166,7 +166,8 @@ extern "C" void app_main(void) {
     // 6. Battery optimization: CPU frequency scaling
     // Check game state to determine if actively playing
     const uint8_t* memory = pacman_get_memory();
-    bool is_playing = (memory && memory[0x4E77] != 0); // Lives count - nonzero means active game
+    uint8_t game_mode = memory ? memory[PACMAN_ADDR_GAME_STATE - 0x4000] : 0;
+    bool is_playing = (game_mode >= 0x02);  // 0x01=attract, 0x02+=active game
     
     if (is_playing && cpu_low_power) {
       // Switch to high performance for gameplay
@@ -191,7 +192,12 @@ extern "C" void app_main(void) {
     }
 
     // 7. Battery optimization: Adaptive backlight dimming
-    idle_frames++;
+    // Reset idle counter when actively playing (game mode >= 0x02)
+    if (is_playing) {
+      idle_frames = 0;
+    } else {
+      idle_frames++;
+    }
     if (idle_frames >= IDLE_DIM_THRESHOLD) {
       if (current_brightness != DISPLAY_BRIGHTNESS_IDLE) {
         display_set_backlight(DISPLAY_BRIGHTNESS_IDLE);
@@ -211,6 +217,9 @@ extern "C" void app_main(void) {
     if (check_attract_mode_start(pacman_get_memory())) {
       ESP_LOGI(TAG, "Attract mode starting - playing FIESTA video...");
       play_fiesta_video();
+      // Clear any accumulated credits so attract mode plays demo
+      // instead of waiting for START button press
+      clear_credits(pacman_get_memory_rw());
       ESP_LOGI(TAG, "Video complete, attract mode will continue");
     }
 
