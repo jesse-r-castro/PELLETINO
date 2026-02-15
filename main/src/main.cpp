@@ -57,6 +57,9 @@ extern "C" int play_fiesta_video(void);
 #define GAME_WAVETABLE pacman_wavetable
 #endif
 
+// Debug logging flag - set to 1 for serial output, 0 for silent (battery saving)
+#define PELLETINO_DEBUG 0
+
 static const char *TAG = "PELLETINO";
 
 // Frame timing
@@ -66,6 +69,9 @@ static constexpr uint32_t FRAME_TIME_US = 16667; // 60 Hz = 16.667ms
 static bool running = false;
 
 extern "C" void app_main(void) {
+#if !PELLETINO_DEBUG
+  esp_log_level_set("*", ESP_LOG_NONE);
+#endif
   ESP_LOGI(TAG, "PELLETINO starting - %s", GAME_NAME);
   ESP_LOGI(TAG, "Free heap: %lu bytes", esp_get_free_heap_size());
 
@@ -184,7 +190,7 @@ extern "C" void app_main(void) {
       esp_pm_config_t pm_config = {
         .max_freq_mhz = 80,
         .min_freq_mhz = 80,
-        .light_sleep_enable = false
+        .light_sleep_enable = true
       };
       esp_pm_configure(&pm_config);
       cpu_low_power = true;
@@ -216,7 +222,21 @@ extern "C" void app_main(void) {
     // 9. Check for attract mode start (after arcade boot or after game over) and play video
     if (check_attract_mode_start(pacman_get_memory())) {
       ESP_LOGI(TAG, "Attract mode starting - playing FIESTA video...");
+      // Temporarily boost CPU for video decode (runs at 80MHz otherwise in attract)
+      esp_pm_config_t pm_video = {
+        .max_freq_mhz = 160,
+        .min_freq_mhz = 160,
+        .light_sleep_enable = false
+      };
+      esp_pm_configure(&pm_video);
       play_fiesta_video();
+      // Restore low power for attract mode
+      esp_pm_config_t pm_low = {
+        .max_freq_mhz = 80,
+        .min_freq_mhz = 80,
+        .light_sleep_enable = true
+      };
+      esp_pm_configure(&pm_low);
       // Clear any accumulated credits so attract mode plays demo
       // instead of waiting for START button press
       clear_credits(pacman_get_memory_rw());

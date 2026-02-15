@@ -23,6 +23,9 @@ static uint16_t sample_buffer[AUDIO_BUFFER_SIZE];
 // Mute state
 static bool audio_muted = false;
 
+// Codec power state (for skipping audio processing when powered down)
+static bool codec_powered = true;
+
 // I2S handle
 static i2s_chan_handle_t i2s_tx_handle = nullptr;
 
@@ -165,10 +168,8 @@ void audio_init(void)
 
 void audio_update(void)
 {
-    if (audio_muted) {
-        // Output silence when muted
-        memset(sample_buffer, 0, sizeof(sample_buffer));
-        audio_transmit();
+    // Skip all audio processing when codec is powered down or muted
+    if (!codec_powered || audio_muted) {
         return;
     }
     
@@ -224,6 +225,11 @@ bool audio_get_mute(void)
 void audio_set_power_state(bool enabled)
 {
     if (enabled) {
+        // Re-enable I2S channel first (clocks must be running before codec init)
+        if (i2s_tx_handle) {
+            i2s_channel_enable(i2s_tx_handle);
+        }
+        
         // Power up ES8311 - need to restore full codec configuration for I2S sync
         
         // Clock manager - critical for I2S synchronization
@@ -257,13 +263,21 @@ void audio_set_power_state(bool enabled)
         es8311_write_reg(0x00, 0x80);  // Reset cleared, chip active
         es8311_write_reg(0x01, 0x3F);  // Clocks enabled
         
+        codec_powered = true;
         vTaskDelay(pdMS_TO_TICKS(10));  // Small delay for codec to stabilize
         
         ESP_LOGI(TAG, "Audio amplifier enabled");
     } else {
         // Power down ES8311 to save battery
+        codec_powered = false;
         es8311_write_reg(0x01, 0x00);  // Clocks disabled
         es8311_write_reg(0x00, 0x00);  // Chip in low-power mode
-        ESP_LOGI(TAG, "Audio amplifier disabled (silence detected)");
+        
+        // Disable I2S channel to stop MCLK/BCLK/LRCK toggling
+        if (i2s_tx_handle) {
+            i2s_channel_disable(i2s_tx_handle);
+        }
+        
+        ESP_LOGI(TAG, "Audio + I2S disabled (silence detected)");
     }
 }

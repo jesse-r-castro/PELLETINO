@@ -97,7 +97,7 @@ bool qmi8658_init(void)
     // Bits 7: self-test=0
     // Bits 6:4: aFS = 000 (±2g)  
     // Bits 3:0: aODR = 0101 (470Hz for more responsive updates)
-    qmi8658_write_reg(REG_CTRL2, 0x05);
+    qmi8658_write_reg(REG_CTRL2, 0x05);  // ±2g, 250Hz
 
     // CTRL3: Gyroscope (configure even if not used)
     qmi8658_write_reg(REG_CTRL3, 0x25);
