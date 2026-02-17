@@ -7,6 +7,10 @@ A faithful recreation of the classic Pac-Man arcade game running on the ESP32-C6
 > **🎉 Project Origins:** PELLETINO was originally created as the [Official 2026 Fiesta San Antonio Medal](https://fiestasanantonio.org/), a wearable collectible pin with full arcade functionality. The Fiesta-specific version with intro video and custom branding is preserved in the [`FIESTA` branch](https://github.com/jesse-r-castro/PELLETINO/tree/FIESTA).
 
 <p align="center">
+  <img src="photos/FIESTA_MEDAL_2026_ASSEMBLED.png" alt="PELLETINO assembled as 2026 Fiesta medal" width="600"/>
+</p>
+
+<p align="center">
   <a href="https://github.com/espressif/esp-idf"><img src="https://img.shields.io/badge/ESP--IDF-v5.x-blue" alt="ESP-IDF"></a>
   <a href="https://www.espressif.com/en/products/socs/esp32-c6"><img src="https://img.shields.io/badge/hardware-ESP32--C6-green" alt="Hardware"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-check_source-orange" alt="License"></a>
