@@ -275,9 +275,13 @@ extern "C" void app_main(void) {
     }
 
     // Frame timing - wait for 16.667ms total
+    // Frame timing - wait for 16.667ms total (60fps) or 33.333ms (30fps) for attract mode
     uint64_t elapsed = esp_timer_get_time() - frame_start;
-    if (elapsed < FRAME_TIME_US) {
-      vTaskDelay(pdMS_TO_TICKS((FRAME_TIME_US - elapsed) / 1000));
+    // Target 60fps for gameplay, 30fps for attract mode to save power
+    uint32_t target_frame_time = is_playing ? FRAME_TIME_US : (FRAME_TIME_US * 2);
+
+    if (elapsed < target_frame_time) {
+      vTaskDelay(pdMS_TO_TICKS((target_frame_time - elapsed) / 1000));
     }
 
     frame_count++;
